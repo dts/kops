@@ -98,15 +98,35 @@ func (s *Subnet) CheckChanges(a, e, changes *Subnet) error {
 
 func (_ *Subnet) RenderAWS(t *awsup.AWSAPITarget, a, e, changes *Subnet) error {
 	if a == nil {
-		glog.V(2).Infof("Creating Subnet with CIDR: %q", *e.CIDR)
+		glog.V(2).Infof("Checking for subnet with CIDR: %q", *e.CIDR)
+		
+		describeRequest := &ec2.DescribeSubnetsInput{
+			Filters: [ &ec2.Filter{ Name: "cidrBlock",Values: [*e.CIDR] } ]
+		}
 
-		request := &ec2.CreateSubnetInput{
+		response, err := t.Cloud.EC2.DescribeSubnets(describeRequest)
+
+		if err != nil {
+			return fmt.Errorf("error describing subnets: %v", err)
+		}
+
+		if len(response.Subnets) == 1 {
+			e.ID = response.Subnets[0].SubnetId
+			glog.V(2).Infof("Found subnet %q by CIDR: %q",*e.ID, *e.CIDR)
+			return
+		}
+
+		glog.V(2).Infof("Found %i subnets by CIDR %q",len(response.Subnets),*e.CIDR)
+		
+		glog.V(2).Infof("Creating Subnet with CIDR: %q", *e.CIDR)
+		
+		createRequest := &ec2.CreateSubnetInput{
 			CidrBlock:        e.CIDR,
 			AvailabilityZone: e.AvailabilityZone,
 			VpcId:            e.VPC.ID,
 		}
 
-		response, err := t.Cloud.EC2.CreateSubnet(request)
+		response, err := t.Cloud.EC2.CreateSubnet(createRequest)
 		if err != nil {
 			return fmt.Errorf("error creating subnet: %v", err)
 		}
